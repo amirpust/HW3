@@ -2,7 +2,8 @@ import pandas as pd
 from math import log2 as log
 import numpy as np
 from sklearn.model_selection import KFold
-import matplotlib as plt
+import matplotlib.pyplot as plt
+
 
 class Node:
 
@@ -145,13 +146,43 @@ class MID3(ID3):
 
 def run_test(algo):
     test_set = pd.read_csv('test.csv')
-    diag = np.array(test_set['diagnosis'])
     correct_cnt = 0
     for index, row in test_set.iterrows():
         if row[0] == algo.predict(np.array(row)[1:]):
             correct_cnt += 1
 
     print(correct_cnt / len(test_set.index))
+
+
+# just call this function and it will run by itself
+def experiment():
+    # M_list = [5, 18, 20, 35, 40, 60, 75, 90]
+    M_list = [1, 2, 3, 5, 8, 16, 30, 50, 80, 120]
+    # kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
+    kf = KFold(n_splits=5, shuffle=True, random_state=123456789)
+    kf.get_n_splits(diag_train)
+    success_rate = []
+    for m in M_list:
+        avg = 0
+        for sub_train, sub_test in kf.split(data_diag):
+            to_train_on = [data_diag[train_idx] for train_idx in sub_train]
+            to_test_on = [training_set_data.iloc[test_idx] for test_idx in sub_test]
+            correct_cnt = 0
+            mid3 = MID3(m)
+            mid3.fit(to_train_on, features)
+            for row in to_test_on:
+                if row[0] == mid3.predict(np.array(row)[1:]):
+                    correct_cnt += 1
+            avg += (correct_cnt / len(to_test_on))
+        success_rate.append(avg / 5)
+
+    plt.plot(M_list, success_rate)
+    plt.xlabel("M values")
+    plt.ylabel("success rate")
+    plt.show()
+
+    return success_rate, M_list
+
 
 training_set_data = pd.read_csv("train.csv")
 diag_train = np.array(training_set_data['diagnosis'])
@@ -160,31 +191,27 @@ features = np.array([training_set_data[col] for col in training_set_data if col 
 id3 = ID3()
 id3.fit(data_diag, features)
 run_test(id3)
-
-# different_m = [1, 10, 15, 80 ,73, 12, 20]
-M_list = [5, 18, 20, 35, 40, 60, 75]
-kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
-kf.get_n_splits(diag_train)
-success_rate = []
-for m in M_list:
-    avg = 0
-    for sub_train, sub_test in kf.split(data_diag):
-        to_train_on = [data_diag[train_idx] for train_idx in sub_train]
-        to_test_on = [training_set_data.iloc[test_idx] for test_idx in sub_test]
-        correct_cnt = 0
-        mid3 = MID3(m)
-        mid3.fit(to_train_on, features)
-        for row in to_test_on:
-            if row[0] == mid3.predict(np.array(row)[1:]):
-                correct_cnt += 1
-        avg += (correct_cnt / len(to_test_on))
-    success_rate.append(avg / 5)
-
-print(success_rate)
-
-best_M_idx = np.argmax(np.array(success_rate))
+# sec 3.3
+succ_rate, M_list = experiment()
+best_M_idx = np.argmax(np.array(succ_rate))
 best_M = M_list[int(best_M_idx)]
+# sec 3.4
 mid3 = MID3(best_M)
 mid3.fit(data_diag, features)
-
+# need to check if an output should be displayed
 run_test(mid3)
+
+# sec 4
+
+test_set = pd.read_csv('test.csv')
+false_positive = 0
+false_negative = 0
+for index, row in test_set.iterrows():
+    algorithm_diag = mid3.predict(np.array(row)[1:])
+    if row[0] == 'B' and algorithm_diag == 'M':
+        false_positive += 1
+    elif row[0] == 'M' and algorithm_diag == 'B':
+        false_negative += 1
+
+loss = (0.1 * false_positive + false_negative) / len(test_set.index)
+print(loss)
