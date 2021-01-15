@@ -156,10 +156,9 @@ def run_test(algo):
 
 # just call this function and it will run by itself
 def experiment():
-    # M_list = [5, 18, 20, 35, 40, 60, 75, 90]
-    M_list = [1, 2, 3, 5, 8, 16, 30, 50, 80, 120]
-    # kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
-    kf = KFold(n_splits=5, shuffle=True, random_state=123456789)
+    M_list = [5, 18, 20, 35, 40, 60, 75, 90]
+    kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
+
     kf.get_n_splits(diag_train)
     success_rate = []
     for m in M_list:
