@@ -15,21 +15,17 @@ class Node:
         self.left = None
         self.examples = examples
         self.selected_feature = None
-        self.sep = -1                                                 # go left if smaller then this bound
+        self.sep = -1  # go left if smaller then this bound
         self.entropy_val = self.entropy()
-        self.diagnosis = 'M' if self.num_of_M >= self.num_of_B else 'B'
+        self.diagnosis = 'M' if self.num_of_M >= 0.1 * self.num_of_B else 'B'
         self.parent = parent
         self.is_leaf = False
-
-    # def is_leaf(self):
-    #     return self.num_of_M == 0 or self.num_of_B == 0
 
     def entropy(self):
         p = self.num_of_M / self.total
         if p == 0 or p == 1:
             return 0
         return -p * log(p) - (1-p) * log(1-p)
-
 
     def set_children(self, left, right):
         self.left = left
@@ -157,7 +153,7 @@ def run_test(algo, to_print):
 '''this function expects that all the data will be available to it i.e the training and the 
 test data should be in the right format as shown below'''
 def experiment():
-    M_list = [4, 5, 12, 18, 20, 33, 35, 42]
+    M_list = [12, 18, 20, 33, 35, 42]
     kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
 
     kf.get_n_splits(diag_train)
@@ -167,42 +163,36 @@ def experiment():
         for sub_train, sub_test in kf.split(data_diag):
             to_train_on = [data_diag[train_idx] for train_idx in sub_train]
             to_test_on = [training_set_data.iloc[test_idx] for test_idx in sub_test]
-            correct_cnt = 0
+            false_positive = 0
+            false_negative = 0
             mid3 = MID3(m)
             mid3.fit(to_train_on, features)
             for row in to_test_on:
-                if row[0] == mid3.predict(np.array(row)[1:]):
-                    correct_cnt += 1
-            avg += (correct_cnt / len(to_test_on))
+                algorithm_diag = mid3.predict(np.array(row)[1:])
+                if row[0] == 'B' and algorithm_diag == 'M':
+                    false_positive += 1
+                elif row[0] == 'M' and algorithm_diag == 'B':
+                    false_negative += 1
+            avg += (0.1 * false_positive + false_negative) / len(to_test_on)
         success_rate.append(avg / 5)
 
-    plt.plot(M_list, success_rate)
-    plt.xlabel("M values")
-    plt.ylabel("success rate")
-    plt.show()
-
-    best_M = M_list[int(np.argmax(np.array(success_rate)))]
-    # sec 3.4
-    mid3 = MID3(best_M)
-    mid3.fit(data_diag, features)
-    # need to check if an output should be displayed
-    run_test(mid3, False)
-    return best_M
+    # plt.plot(M_list, success_rate)
+    # plt.xlabel("M values")
+    # plt.ylabel("success rate")
+    # plt.show()
+    return M_list[int(np.argmin(np.array(success_rate)))]
 
 
 training_set_data = pd.read_csv("train.csv")
 diag_train = np.array(training_set_data['diagnosis'])
 data_diag = [(index, diag_train[index]) for index in range(len(diag_train))]
 features = np.array([training_set_data[col] for col in training_set_data if col != 'diagnosis'])
-id3 = ID3()
-id3.fit(data_diag, features)
-run_test(id3, True)
 
-
-# sec 4
+# sec 4.3
 best = experiment()
+print(best)
 M_id3 = MID3(best)
-M_id3.fit(data_diag,features)
+M_id3.fit(data_diag, features)
 test_set = pd.read_csv('test.csv')
 false_positive = 0
 false_negative = 0
@@ -213,5 +203,8 @@ for index, row in test_set.iterrows():
     elif row[0] == 'M' and algorithm_diag == 'B':
         false_negative += 1
 
+
 loss = (0.1 * false_positive + false_negative) / len(test_set.index)
+print("fp = " + str(false_positive) + " fn = " + str(false_negative))
+run_test(M_id3, True)
 print(loss)
