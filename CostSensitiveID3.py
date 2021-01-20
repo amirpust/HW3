@@ -153,7 +153,7 @@ def run_test(algo, to_print):
 '''this function expects that all the data will be available to it i.e the training and the 
 test data should be in the right format as shown below'''
 def experiment():
-    M_list = [12, 18, 20, 33, 35, 42]
+    M_list = [10, 12, 15, 18, 20, 25]
     kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
 
     kf.get_n_splits(diag_train)
@@ -175,11 +175,11 @@ def experiment():
                     false_negative += 1
             avg += (0.1 * false_positive + false_negative) / len(to_test_on)
         success_rate.append(avg / 5)
-
-    # plt.plot(M_list, success_rate)
-    # plt.xlabel("M values")
-    # plt.ylabel("success rate")
-    # plt.show()
+# TODO : delete this part
+    plt.plot(M_list, success_rate)
+    plt.xlabel("M values")
+    plt.ylabel("success rate")
+    plt.show()
     return M_list[int(np.argmin(np.array(success_rate)))]
 
 
@@ -188,9 +188,8 @@ diag_train = np.array(training_set_data['diagnosis'])
 data_diag = [(index, diag_train[index]) for index in range(len(diag_train))]
 features = np.array([training_set_data[col] for col in training_set_data if col != 'diagnosis'])
 
-# sec 4.3
+# sec 4.3 ------------
 best = experiment()
-print(best)
 M_id3 = MID3(best)
 M_id3.fit(data_diag, features)
 test_set = pd.read_csv('test.csv')
@@ -203,8 +202,8 @@ for index, row in test_set.iterrows():
     elif row[0] == 'M' and algorithm_diag == 'B':
         false_negative += 1
 
-
 loss = (0.1 * false_positive + false_negative) / len(test_set.index)
+# TODO : delete
 print("fp = " + str(false_positive) + " fn = " + str(false_negative))
 run_test(M_id3, True)
 print(loss)

@@ -1,8 +1,10 @@
 import pandas as pd
 from math import log2 as log
 import numpy as np
+from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
-import matplotlib.pyplot as plt
+
+import random
 
 
 class Node:
@@ -91,6 +93,7 @@ class ID3:
         separators = [(sorted_col[i]+sorted_col[i+1])/2 for i in range(0, len(sorted_col) - 1)]
         ig = []
 
+
         for sep in separators:
             under_sep = [tup for tup in current_node.examples if feature[tup[0]] < sep]
             under_M = len([x for x in under_sep if x[1] == 'M'])
@@ -101,6 +104,9 @@ class ID3:
             p_over = over_M / (over_B + over_M) if over_B + over_M > 0 else 0
             ig.append(current_node.entropy_val - (1 / current_node.total) * ((under_B + under_M) * self.entropy(p_under)
                                                                              + (over_B + over_M) * self.entropy(p_over)))
+        if len(ig) == 0:
+            return -1, sorted_col[-1]
+
         best = np.argmax(ig)
         return ig[int(best)], separators[int(best)]
 
@@ -119,7 +125,6 @@ class ID3:
 
 
 class MID3(ID3):
-
     def __init__(self, M):
         super().__init__()
         self.M_limit = M
@@ -145,73 +150,120 @@ class MID3(ID3):
         self.TDIDT(left, f)
         self.TDIDT(right, f)
 
-def run_test(algo, to_print):
-    test_set = pd.read_csv('test.csv')
+
+class KNN:
+
+    def __init__(self, N, K, P, weigh=False, M=0):
+        self.M = M
+        self.p = P
+        self.num_of_d_trees = N
+        self.K = K
+        self.trees = []
+        self.centroid = []
+        self.weigh = weigh
+
+
+
+
+    def fit(self, examples, feat):
+        for i in range(self.num_of_d_trees):
+            random.seed(i)
+            current_examples = random.sample(examples, int(len(examples) * self.p) + 1)
+            self.calc_centroid(current_examples, feat)
+            decision_tree = MID3(self.M)
+            decision_tree.fit(current_examples, feat)
+            self.trees.append(decision_tree)
+
+    def calc_centroid(self, examples, feat: np.ndarray):
+        num_of_examples = len(examples)
+        current_centroid = []
+        for f in feat:
+            avg = 0
+            for index, diag in examples:
+                avg += f[index]
+            avg /= num_of_examples
+            current_centroid.append(avg)
+        self.centroid.append(np.array(current_centroid))
+
+    def predict(self, to_predict_on):
+        euclid_distances = []
+        for tree_index in range(len(self.centroid)):
+            euclid_dist = np.linalg.norm(self.centroid[tree_index] - to_predict_on)
+            euclid_distances.append((tree_index, euclid_dist))
+
+        euclid_distances.sort(key=lambda x: x[1])
+
+        x_min = euclid_distances[0][1]
+        x_max = euclid_distances[self.K - 1][1]
+
+        num_of_M = 0
+        num_of_B = 0
+        # removed the multiplication of i
+        for i in range(self.K):
+            classification = self.trees[euclid_distances[i][0]].predict(to_predict_on)
+            if classification == 'M':
+                num_of_M += self.normalize(x_min, x_max, euclid_distances[i][1]) if self.weigh else 1
+            else:
+                num_of_B += self.normalize(x_min, x_max, euclid_distances[i][1]) if self.weigh else 1
+        return 'M' if num_of_M > num_of_B else 'B'
+
+    def normalize(self, x_min, x_max, val):
+        return 1 - ((val - x_min) / (x_max - x_min))
+
+def run_test(algo, to_print, test_group):
+
     correct_cnt = 0
-    for index, row in test_set.iterrows():
+    for row in test_group:
         if row[0] == algo.predict(np.array(row)[1:]):
             correct_cnt += 1
     if to_print:
-        print(correct_cnt / len(test_set.index))
+        print(correct_cnt / len(test_group))
+    return correct_cnt / len(test_group)
 
 
-'''this function expects that all the data will be available to it i.e the training and the 
-test data should be in the right format as shown below'''
-def experiment():
-    M_list = [5, 10, 12, 18, 20, 33, 35, 42]
-    kf = KFold(n_splits=5, shuffle=True, random_state=316397843)
+def choose_params(N, train_data, feats, probability, K, M):
+    kf = KFold(n_splits=5, random_state=316397843, shuffle=True)
+    kf.get_n_splits(train_data)
+    best_parameters = []
+    for num_of_trees in N:
+        for p in probability:
+            for m in M:
+                for k in K:
+                    avg = 0
+                    for sub_train, sub_test in kf.split(train_data):
+                        to_train_on = [data_diag[train_idx] for train_idx in sub_train]
+                        to_test_on = [training_set_data.iloc[test_idx] for test_idx in sub_test]
+                        knn = KNN(N=num_of_trees, K=int(k * num_of_trees), P=p, weigh=True,M=m)
+                        knn.fit(to_train_on, feats)
+                        accuracy = run_test(knn, False, to_test_on)
+                        avg += accuracy
+                    avg /= 5
+                    print("accuracy = " + str(avg) + " k = " + str(k) + " N = " + str(num_of_trees) + " p = " + str(p) +
+                          " M = " + str(m))
+                    best_parameters.append((avg, k, num_of_trees, p, m))
+    return max(best_parameters, key=lambda x: x[0])
 
-    kf.get_n_splits(diag_train)
-    success_rate = []
-    for m in M_list:
-        avg = 0
-        for sub_train, sub_test in kf.split(data_diag):
-            to_train_on = [data_diag[train_idx] for train_idx in sub_train]
-            to_test_on = [training_set_data.iloc[test_idx] for test_idx in sub_test]
-            correct_cnt = 0
-            mid3 = MID3(m)
-            mid3.fit(to_train_on, features)
-            for row in to_test_on:
-                if row[0] == mid3.predict(np.array(row)[1:]):
-                    correct_cnt += 1
-            avg += (correct_cnt / len(to_test_on))
-        success_rate.append(avg / 5)
 
-    plt.plot(M_list, success_rate)
-    plt.xlabel("M values")
-    plt.ylabel("success rate")
-    plt.show()
-
-    best_M = M_list[int(np.argmax(np.array(success_rate)))]
-    # sec 3.4----------
-    mid3 = MID3(best_M)
-    mid3.fit(data_diag, features)
-    # need to check if an output should be displayed
-    run_test(mid3, False)
-    return best_M
-
+# sec 7 -----------
 
 training_set_data = pd.read_csv("train.csv")
 diag_train = np.array(training_set_data['diagnosis'])
+n = len(diag_train)
+N = [15, 20, 25, 30]
+P = [0.3, 0.4, 0.5, 0.6, 0.7]
+K = [0.25, 0.35, 0.45, 0.6, 0.7]
+M = [1, 5, 10, 15]
 data_diag = [(index, diag_train[index]) for index in range(len(diag_train))]
 features = np.array([training_set_data[col] for col in training_set_data if col != 'diagnosis'])
-id3 = ID3()
-id3.fit(data_diag, features)
-run_test(id3, True)
+best = choose_params(N, data_diag, features, P, K, M)
+print("k = " + str(best[1]) + " N = " + str(best[2]) + " P = " + str(best[3]) + " M = " + str(best[-1]))
+N = 15
+K = 0.7
+P = 0.7
+knn = KNN(N=N, K=int(np.ceil(N * K)), P=P, weigh=True)
+knn.fit(examples=data_diag, feat=features)
+test_set = pd.read_csv('test.csv')
+run_test(knn, True, [row for idx, row in test_set.iterrows()])
 
 
-# sec 4 -------------
-# best = experiment()
-# M_id3 = MID3(best)
-# M_id3.fit(data_diag,features)
-# test_set = pd.read_csv('test.csv')
-# false_positive = 0
-# false_negative = 0
-# for index, row in test_set.iterrows():
-#     algorithm_diag = M_id3.predict(np.array(row)[1:])
-#     if row[0] == 'B' and algorithm_diag == 'M':
-#         false_positive += 1
-#     elif row[0] == 'M' and algorithm_diag == 'B':
-#         false_negative += 1
-
-loss = (0.1 * false_positive + false_negative) / len(test_set.index)
+# take 2 : lets try to use the minmax over the centroid.
